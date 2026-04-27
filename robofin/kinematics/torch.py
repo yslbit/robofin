@@ -1,5 +1,9 @@
 import torch
 
+# torch.compile was added in PyTorch 2.0; fall back to identity on 1.x
+if not hasattr(torch, "compile"):
+    torch.compile = lambda f: f  # type: ignore[attr-defined]
+
 
 def axis_angle(axis, angle):
     sina = torch.sin(angle)

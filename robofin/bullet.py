@@ -7,7 +7,12 @@ import trimesh
 from geometrout import SE3, Cuboid, Cylinder, Sphere
 
 from robofin.point_cloud_tools import transform_point_cloud
-from robofin.robots import FrankaGripper, FrankaRobot
+try:
+    from robofin.robots import FrankaGripper, FrankaRobot
+except ImportError:
+    FrankaGripper = None
+    FrankaRobot = None
+from robofin.robots_aubo import AuboRobot
 
 
 class BulletRobot:
@@ -75,21 +80,7 @@ class BulletRobot:
         contacts = p.getClosestPoints(
             self.id, self.id, max_radius, physicsClientId=self.clid
         )
-        # Manually filter out fixed connections that shouldn't be considered
-        # TODO fix this somehow
-        filtered = []
-        for c in contacts:
-            # A link is always in collision with itself and its neighbors
-            if abs(c[3] - c[4]) <= 1:
-                continue
-            # panda_link8 just transforms the origin
-            if c[3] == 6 and c[4] == 8:
-                continue
-            if c[3] == 8 and c[4] == 6:
-                continue
-            if c[3] > 8 or c[4] > 8:
-                continue
-            filtered.append(c)
+        filtered = self._filter_self_collision_contacts(contacts)
         if len(filtered):
             return min([x[8] for x in filtered])
         return None
@@ -126,18 +117,7 @@ class BulletRobot:
         p.performCollisionDetection(physicsClientId=self.clid)
         if check_self:
             contacts = p.getContactPoints(self.id, self.id, physicsClientId=self.clid)
-            # Manually filter out fixed connections that shouldn't be considered
-            # TODO fix this somehow
-            filtered = []
-            for c in contacts:
-                # panda_link8 just transforms the origin
-                if c[3] == 6 and c[4] == 8:
-                    continue
-                if c[3] == 8 and c[4] == 6:
-                    continue
-                if c[3] > 8 or c[4] > 8:
-                    continue
-                filtered.append(c)
+            filtered = self._filter_self_collision_contacts(contacts)
             points.extend([p[5] for p in filtered])
 
         # Iterate through all obstacles to check for collisions
@@ -191,6 +171,88 @@ class BulletRobot:
 
         for k, v in self._link_name_to_index.items():
             self._index_to_link_name[v] = k
+        self._ignored_self_collision_link_pairs = (
+            self._build_ignored_self_collision_link_pairs()
+        )
+
+    def _filter_self_collision_contacts(self, contacts):
+        """
+        Filters out self-collision pairs that are expected from the robot's
+        kinematic structure, such as the same link, links connected only by
+        fixed joints, and links separated by a single actuated joint.
+        """
+        filtered = []
+        ignored_pairs = self._ignored_self_collision_link_pairs
+        for contact in contacts:
+            pair = (contact[3], contact[4])
+            if pair[0] > pair[1]:
+                pair = (pair[1], pair[0])
+            if pair in ignored_pairs:
+                continue
+            filtered.append(contact)
+        return filtered
+
+    def _build_ignored_self_collision_link_pairs(self):
+        """
+        Precomputes link pairs that should be ignored during self-collision checks.
+
+        The rule is based on distance in the kinematic tree:
+        fixed joints contribute 0, actuated joints contribute 1, and any pair
+        with total active-joint distance <= 1 is ignored.
+
+        The distance is not a geometric distance. It is the number of active
+        joints along the path between two links in the kinematic tree.
+
+        We compute that path length by walking both links upward to their
+        nearest common ancestor:
+        1. walk from ``link_a`` to the root and record every ancestor plus the
+           active-joint distance from ``link_a`` to that ancestor;
+        2. walk from ``link_b`` upward until we hit one of those ancestors;
+        3. add the two distances together.
+
+        For a simple chain this may look more complicated than necessary, since
+        one link can often be reached by walking upward from the other. The
+        two-sided traversal is used because the code must also work for general
+        trees where neither link is an ancestor of the other, such as robots
+        with branching substructures.
+        """
+        num_joints = p.getNumJoints(self.id, physicsClientId=self.clid)
+        parent_index = {-1: -1}
+        active_joint_cost = {-1: 0}
+        for joint_idx in range(num_joints):
+            info = p.getJointInfo(self.id, joint_idx, physicsClientId=self.clid)
+            parent_index[joint_idx] = info[16]
+            active_joint_cost[joint_idx] = 0 if info[2] == p.JOINT_FIXED else 1
+
+        def active_joint_distance(link_a, link_b):
+            # Record the active-joint distance from link_a to each of its
+            # ancestors (including itself and the root).
+            ancestors = {}
+            distance = 0
+            current = link_a
+            while True:
+                ancestors[current] = distance
+                if current == -1:
+                    break
+                distance += active_joint_cost[current]
+                current = parent_index[current]
+
+            # Climb from link_b until reaching the nearest common ancestor with
+            # link_a, then add the distance accumulated on both sides.
+            distance = 0
+            current = link_b
+            while current not in ancestors:
+                distance += active_joint_cost[current]
+                current = parent_index[current]
+            return distance + ancestors[current]
+
+        ignored_pairs = set()
+        link_indices = [-1] + list(range(num_joints))
+        for idx, link_a in enumerate(link_indices):
+            for link_b in link_indices[idx:]:
+                if active_joint_distance(link_a, link_b) <= 1:
+                    ignored_pairs.add((link_a, link_b))
+        return frozenset(ignored_pairs)
 
     def _set_robot_specifics(self, **kwargs):
         raise NotImplemented("Must be set in the robot specific class")
@@ -283,21 +345,7 @@ class BulletFranka(BulletRobot):
             contacts = p.getClosestPoints(
                 self.id, self.id, radius, physicsClientId=self.clid
             )
-            # Manually filter out fixed connections that shouldn't be considered
-            # TODO fix this somehow
-            filtered = []
-            for c in contacts:
-                # A link is always in collision with itself and its neighbors
-                if abs(c[3] - c[4]) <= 1:
-                    continue
-                # panda_link8 just transforms the origin
-                if c[3] == 6 and c[4] == 8:
-                    continue
-                if c[3] == 8 and c[4] == 6:
-                    continue
-                if c[3] > 8 or c[4] > 8:
-                    continue
-                filtered.append(c)
+            filtered = self._filter_self_collision_contacts(contacts)
             if len(filtered) > 0:
                 return True
 
@@ -375,19 +423,7 @@ class BulletFrankaGripper(BulletRobot):
             contacts = p.getClosestPoints(
                 self.id, self.id, radius, physicsClientId=self.clid
             )
-            # Manually filter out fixed connections that shouldn't be considered
-            # TODO fix this somehow
-            filtered = []
-            for c in contacts:
-                # A link is always in collision with itself and its neighbors
-                if abs(c[3] - c[4]) <= 1:
-                    continue
-                # panda_link8 just transforms the origin
-                if c[3] == 6 and c[4] == 4:
-                    continue
-                if c[3] == 4 and c[4] == 6:
-                    continue
-                filtered.append(c)
+            filtered = self._filter_self_collision_contacts(contacts)
             if len(filtered) > 0:
                 return True
 
@@ -435,6 +471,60 @@ class VisualGripper:
         )
 
 
+class BulletAubo(BulletRobot):
+    robot_type = AuboRobot
+
+    def _set_robot_specifics(self, **kwargs):
+        # Find the 6 revolute joint indices in pybullet order
+        self._joint_indices = []
+        for i in range(p.getNumJoints(self.id, physicsClientId=self.clid)):
+            info = p.getJointInfo(self.id, i, physicsClientId=self.clid)
+            if info[2] == p.JOINT_REVOLUTE:
+                self._joint_indices.append(i)
+
+    def marionette(self, state, velocities=None):
+        assert len(state) == 6
+        if velocities is None:
+            velocities = [0.0] * 6
+        for i, (ji, q, v) in enumerate(
+            zip(self._joint_indices, state, velocities)
+        ):
+            p.resetJointState(
+                self.id,
+                ji,
+                q,
+                targetVelocity=v,
+                physicsClientId=self.clid,
+            )
+
+    def get_joint_states(self):
+        states = p.getJointStates(
+            self.id, self._joint_indices, physicsClientId=self.clid
+        )
+        return [s[0] for s in states], [s[1] for s in states]
+
+    def in_collision(self, obstacles, radius=0.0, check_self=False, ignore_base=True):
+        if check_self:
+            contacts = p.getClosestPoints(
+                self.id, self.id, radius, physicsClientId=self.clid
+            )
+            filtered = self._filter_self_collision_contacts(contacts)
+            if len(filtered) > 0:
+                return True
+        for oid in obstacles:
+            contacts = p.getClosestPoints(
+                self.id, oid, radius, physicsClientId=self.clid
+            )
+            if ignore_base:
+                # The Aubo URDF has a world_joint (FIXED) as joint 0, so base_link
+                # is pybullet link index 0 (not -1). Exclude both -1 (world root)
+                # and 0 (base_link) since the base is mounted on the table.
+                contacts = [c for c in contacts if c[3] > 0]
+            if len(contacts) > 0:
+                return True
+        return False
+
+
 class Bullet:
     def __init__(self, gui=False, headless=False):
         """
@@ -448,17 +538,41 @@ class Bullet:
             self.clid = p.connect(p.GUI)
         else:
             self.clid = p.connect(p.DIRECT)
+        self._closed = False
         self.robots = {}
         self.obstacle_ids = []
+        self.primitives = []
         self.poses = []
+
+    def close(self):
+        """Disconnect the physics client once, even across error paths."""
+        if self._closed:
+            return
+        self._closed = True
+        clid = getattr(self, "clid", None)
+        if clid is None:
+            return
+        try:
+            p.disconnect(clid)
+        except Exception:
+            pass
+        finally:
+            self.clid = None
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        self.close()
+        return False
 
     def __del__(self):
         """
         Disconnects the client on destruction
         """
-        p.disconnect(self.clid)
+        self.close()
 
-    def visualize_pose(self, pose):
+    def visualize_pose(self, pose: SE3):
         root_path = Path("/tmp")
 
         target_ids = []
@@ -553,25 +667,49 @@ class Bullet:
             distance, yaw, pitch, target, physicsClientId=self.clid
         )
 
-    def set_camera_position_from_matrix(self, pose):
-        distance = pose.matrix[2, 3] / pose.matrix[2, 2]
-        # distance = 5
-        target = tuple((pose.matrix @ np.array([0, 0, -distance, 1]))[:3])
+    def set_camera_position_from_matrix(self, pose: SE3):
+        # PyBullet's debug camera is parameterized by distance/yaw/pitch/target,
+        # not a full SE3 pose. We recover those values from the camera position
+        # and its forward ray. As in the previous implementation, we choose the
+        # target as the intersection of the camera's forward ray with the world
+        # z=0 plane; if that intersection is undefined or behind the camera, we
+        # fall back to a point one meter in front of the camera.
+        #
+        # The pose convention used here matches the previous implementation:
+        # the camera looks along its local -Z axis. In world coordinates that
+        # forward direction is therefore -pose.matrix[:3, 2].
+        #
+        # Let the camera ray be:
+        #   target = pose.pos + distance * forward
+        # and let forward = [fx, fy, fz], pose.pos = [px, py, pz].
+        # To intersect the world z=0 plane we solve:
+        #   pz + distance * fz = 0
+        # which gives:
+        #   distance = -pz / fz
+        #
+        # The previous yaw/pitch code referenced a signed-angle formula from:
+        # https://stackoverflow.com/questions/5188561/signed-angle-between-two-3d-vectors-with-same-origin-within-the-same-plane
+        # That formula is valid only when the plane normal is known in advance.
+        # Here we instead compute yaw/pitch directly from the camera-to-target
+        # displacement, which matches PyBullet's debug camera parameterization.
+        forward = -pose.matrix[:3, 2]
+        forward_z = forward[2]
+        if abs(forward_z) > 1e-8:
+            distance = -pose.pos[2] / forward_z
+        else:
+            distance = 1.0
+        if distance <= 0:
+            distance = 1.0
 
-        # Calculations for signed angles come from here https://stackoverflow.com/questions/5188561/signed-angle-between-two-3d-vectors-with-same-origin-within-the-same-plane
-        # Have to get the angle between the camera's x axis and the world x axis
-        v1 = (pose.matrix @ np.array([1, 0, 0, 1]))[:3] - pose.pos
-        v2 = np.array([1, 0, 0])
-        vn = np.cross(v1, v2)
-        vn = vn / np.linalg.norm(vn)
-        yaw = np.degrees(np.arctan2(np.dot(np.cross(v1, v2), vn), np.dot(v1, v2)))
+        target = tuple((pose.pos + distance * forward).tolist())
+        disp = np.asarray(target) - pose.pos
+        planar = np.linalg.norm(disp[:2])
 
-        # Have to get the
-        v1 = (pose.matrix @ np.array([0, 1, 0, 1]))[:3] - pose.pos
-        v2 = np.array([0, 0, 1])
-        vn = np.cross(v1, v2)
-        vn = vn / np.linalg.norm(vn)
-        pitch = np.degrees(np.arctan2(np.dot(np.cross(v2, v1), vn), np.dot(v1, v2)))
+        # Match PyBullet's debug camera convention:
+        #   yaw   = atan2(-dx, dy)
+        #   pitch = atan2(dz, sqrt(dx^2 + dy^2))
+        yaw = np.degrees(np.arctan2(-disp[0], disp[1]))
+        pitch = np.degrees(np.arctan2(disp[2], planar))
         p.resetDebugVisualizerCamera(
             distance, yaw, pitch, target, physicsClientId=self.clid
         )
@@ -696,6 +834,10 @@ class Bullet:
                 robot = VisualGripper(self.clid, **kwargs)
             else:
                 robot = BulletFrankaGripper(self.clid, **kwargs)
+        elif issubclass(robot_type, AuboRobot):
+            robot = BulletAubo(self.clid, **kwargs)
+        elif issubclass(robot_type, BulletAubo):
+            robot = robot_type(self.clid, **kwargs)
         else:
             raise NotImplementedError(f"Cannot load robot of type {robot_type}")
         self.robots[robot.id] = robot
@@ -825,7 +967,8 @@ class Bullet:
         for prim in primitives:
             if prim.is_zero_volume():
                 continue
-            elif isinstance(prim, Cuboid):
+            self.primitives.append(prim)
+            if isinstance(prim, Cuboid):
                 ids.append(self.load_cuboid(prim, color, visual_only))
             elif isinstance(prim, Cylinder):
                 ids.append(self.load_cylinder(prim, color, visual_only))
@@ -873,6 +1016,7 @@ class Bullet:
             if id is not None:
                 p.removeBody(id, physicsClientId=self.clid)
         self.obstacle_ids = []
+        self.primitives = []
 
     def clear_all_poses(self):
         for pose in self.poses:

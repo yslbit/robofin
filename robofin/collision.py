@@ -502,3 +502,6 @@ class TorchFrankaCollisionSpheres:
         if squeeze:
             collisions = collisions.squeeze(0)
         return collisions
+
+# Backward-compatibility alias used by base_environment.py
+FrankaSelfCollisionChecker = FrankaCollisionSpheres

@@ -1,12 +1,22 @@
 import numpy as np
 from geometrout import SE3
-from ikfast_franka_panda import get_fk, get_ik
 
-from robofin.robot_constants import (
-    FrankaConstants,
-    FrankaGripperConstants,
-    RealFrankaConstants,
-)
+try:
+    from ikfast_franka_panda import get_fk, get_ik
+except ImportError:
+    get_fk = None
+    get_ik = None
+
+try:
+    from robofin.robot_constants import (
+        FrankaConstants,
+        FrankaGripperConstants,
+        RealFrankaConstants,
+    )
+except ImportError:
+    FrankaConstants = None
+    FrankaGripperConstants = None
+    RealFrankaConstants = None
 
 
 class FrankaRobot:

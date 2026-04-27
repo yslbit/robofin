@@ -1,4 +1,6 @@
 import os
+import functools
+import importlib.resources
 from collections import OrderedDict
 
 import numpy as np
@@ -6,6 +8,19 @@ import six
 import torch
 import trimesh
 from lxml import etree as ET
+
+# Python 3.7 compatibility for newer pycollada releases that import
+# functools.cache (added in Python 3.9).
+if not hasattr(functools, "cache"):
+    functools.cache = functools.lru_cache(maxsize=None)
+
+# Python 3.7 compatibility for newer pycollada releases that call
+# importlib.resources.files (added in Python 3.9).
+if not hasattr(importlib.resources, "files"):
+    import importlib_resources
+
+    importlib.resources.files = importlib_resources.files
+
 from urchin import (
     URDF,
     Box,
@@ -81,6 +96,7 @@ class TorchMesh(Mesh):
     def meshes(self, value):
         if self.lazy_filename is not None and value is None:
             self._meshes = None
+            return  # lazy mode: vertices will be populated on first access
         elif isinstance(value, six.string_types):
             value = self._load_and_combine_meshes(value, self.combine)
         elif isinstance(value, (list, tuple, set, np.ndarray)):
