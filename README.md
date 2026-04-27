@@ -5,7 +5,7 @@ A collection of robotics tools tailored to machine learning, with a focus on fas
 ## Repository Relationship
 
 - Original repository (upstream): robofin (original project)
-- Current repository (fork): https://github.com/yslbit/robofin
+- Current repository (fork): https://github.com/fishbotics/robofin
 - This fork is based on the original repository and adds Aubo robot support (including Aubo i3H).
 
 ## What Is Included
