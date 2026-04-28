@@ -1,0 +1,127 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Robofin: Learn Aubo",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/tools/debug_robofin.py",
+      "args": [
+        "--robot",
+        "aubo",
+        "--mode",
+        "all"
+      ],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "justMyCode": false,
+      "subProcess": true,
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}${pathSeparator}${env:PYTHONPATH}",
+        "PYTHONUNBUFFERED": "1",
+        "PYTHONDONTWRITEBYTECODE": "1"
+      }
+    },
+    {
+      "name": "Robofin: Learn Franka",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/tools/debug_robofin.py",
+      "args": [
+        "--robot",
+        "franka",
+        "--mode",
+        "all"
+      ],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "justMyCode": false,
+      "subProcess": true,
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}${pathSeparator}${env:PYTHONPATH}",
+        "PYTHONUNBUFFERED": "1",
+        "PYTHONDONTWRITEBYTECODE": "1"
+      }
+    },
+    {
+      "name": "Robofin: Pytest Current File",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "pytest",
+      "args": [
+        "-s",
+        "-v",
+        "${file}"
+      ],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "justMyCode": false,
+      "subProcess": true,
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}${pathSeparator}${env:PYTHONPATH}",
+        "PYTHONUNBUFFERED": "1",
+        "PYTHONDONTWRITEBYTECODE": "1"
+      }
+    },
+    {
+      "name": "Robofin: Pytest All",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "pytest",
+      "args": [
+        "-s",
+        "-v",
+        "tests"
+      ],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "justMyCode": false,
+      "subProcess": true,
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}${pathSeparator}${env:PYTHONPATH}",
+        "PYTHONUNBUFFERED": "1",
+        "PYTHONDONTWRITEBYTECODE": "1"
+      }
+    },
+    {
+      "name": "Robofin: Pytest Aubo",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "pytest",
+      "args": [
+        "-s",
+        "-v",
+        "tests/test_aubo.py"
+      ],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "justMyCode": false,
+      "subProcess": true,
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}${pathSeparator}${env:PYTHONPATH}",
+        "PYTHONUNBUFFERED": "1",
+        "PYTHONDONTWRITEBYTECODE": "1"
+      }
+    },
+    {
+      "name": "Robofin: Pytest Franka",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "pytest",
+      "args": [
+        "-s",
+        "-v",
+        "tests/test_samplers.py"
+      ],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "justMyCode": false,
+      "subProcess": true,
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}${pathSeparator}${env:PYTHONPATH}",
+        "PYTHONUNBUFFERED": "1",
+        "PYTHONDONTWRITEBYTECODE": "1"
+      }
+    }
+  ]
+}
