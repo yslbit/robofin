@@ -6,6 +6,11 @@ import torch
 import trimesh
 import urchin
 
+from robofin.kinematics.numba_aubo import (
+    get_points_on_aubo_arm,
+    get_points_on_aubo_arm_from_poses,
+    get_points_on_aubo_eef,
+)
 from robofin.point_cloud_tools import transform_point_cloud
 from robofin.robot_constants_aubo import AuboConstants
 from robofin.torch_urdf import TorchURDF
@@ -20,7 +25,7 @@ class AuboSamplerBase:
         with_base_link=True,
     ):
         logging.getLogger("trimesh").setLevel("ERROR")
-        self.woth_base_link = with_base_link
+        self.with_base_link = with_base_link
         self.num_robot_points = num_robot_points
         self.num_eef_points = num_eef_points
 
@@ -163,6 +168,48 @@ class AuboSamplerBase:
         return True
 
 
+class NumpyAuboSampler(AuboSamplerBase):
+    def sample(self, cfg, num_points=None):
+        """num_points = 0 implies use all points."""
+        assert num_points is None or 0 < num_points <= self.num_robot_points
+        return get_points_on_aubo_arm(
+            cfg,
+            num_points or 0,
+            self.points["base_link"],
+            self.points["shoulder_Link"],
+            self.points["upperArm_Link"],
+            self.points["foreArm_Link"],
+            self.points["wrist1_Link"],
+            self.points["wrist2_Link"],
+            self.points["wrist3_Link"],
+        )
+
+    def sample_from_poses(self, poses, num_points=None):
+        assert num_points is None or 0 < num_points <= self.num_robot_points
+        return get_points_on_aubo_arm_from_poses(
+            poses,
+            num_points or 0,
+            self.points["base_link"],
+            self.points["shoulder_Link"],
+            self.points["upperArm_Link"],
+            self.points["foreArm_Link"],
+            self.points["wrist1_Link"],
+            self.points["wrist2_Link"],
+            self.points["wrist3_Link"],
+        )
+
+    def sample_end_effector(
+        self, pose, num_points=None, frame="wrist3_Link"
+    ):
+        assert num_points is None or 0 < num_points <= self.num_eef_points
+        return get_points_on_aubo_eef(
+            pose,
+            num_points or 0,
+            self.points["eef_wrist3_Link"],
+            frame,
+        )
+
+
 class TorchAuboSampler(AuboSamplerBase):
     def __init__(
         self,
@@ -234,6 +281,8 @@ class TorchAuboSampler(AuboSamplerBase):
         for link_name, link_idx in AuboConstants.ARM_VISUAL_LINKS.__members__.items():
             if link_name not in self.points:
                 continue
+            if not self.with_base_link and link_name == "base_link":
+                continue
             pc = transform_point_cloud(
                 self.points[link_name].float().repeat((fk[link_name].shape[0], 1, 1)),
                 fk[link_name],
@@ -266,6 +315,8 @@ class TorchAuboSampler(AuboSamplerBase):
         fk_points = []
         for link_name, link_idx in AuboConstants.ARM_VISUAL_LINKS.__members__.items():
             if link_name not in self.points:
+                continue
+            if not self.with_base_link and link_name == "base_link":
                 continue
             pc = transform_point_cloud(
                 self.points[link_name].float().repeat((poses.shape[0], 1, 1)),

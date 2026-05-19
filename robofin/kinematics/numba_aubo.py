@@ -245,3 +245,41 @@ def get_points_on_aubo_arm(
         wrist2_Link_points,
         wrist3_Link_points,
     )
+
+
+@numba.jit(nopython=True, cache=True)
+def eef_pose_to_wrist3_link(pose, frame):
+    """
+    Convert a pose of the Aubo i3H end-effector (e.g. tool0) to the pose of
+    wrist3_Link, which is the last link in the kinematic chain and the only
+    link with visual geometry.
+
+    In the current Aubo i3H URDF, there are no additional fixed hand/finger/tool
+    links after wrist3_Link, so this function simply returns the input pose
+    unchanged. But we keep this function here for API compatibility with the
+    Franka helper functions, which do have extra fixed links after their last
+    kinematic link.
+    """
+    return pose
+
+@numba.jit(nopython=True, cache=True)
+def get_points_on_aubo_eef(
+    pose,
+    sample,
+    eef_wrist3_Link_points,
+    frame,
+    ):
+    pose = eef_pose_to_wrist3_link(pose, frame)
+    fk = aubo_eef_visual_fk(prismatic_joint=0.0, base_pose=pose)
+    all_point = np.concatenate(
+        (
+            label(transform_in_place(np.copy(eef_wrist3_Link_points), fk[0]), 0.0),
+        ),
+        axis=0,
+    )
+    
+    if sample > 0:
+        return all_point[
+            np.random.choice(all_point.shape[0], sample, replace=False), :
+        ]
+    return all_point

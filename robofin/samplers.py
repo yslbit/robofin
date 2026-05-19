@@ -184,7 +184,7 @@ class SamplerBase:
 class NumpyFrankaSampler(SamplerBase):
     def sample(self, cfg, prismatic_joint, num_points=None):
         """num_points = 0 implies use all points."""
-        assert num_points is None or 0 < num_points <= self.num_eef_points
+        assert num_points is None or 0 < num_points <= self.num_robot_points
         return get_points_on_franka_arm(
             cfg,
             prismatic_joint,
